@@ -1,0 +1,734 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bublik ServerSide</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #7A4630;
+      --bg-secondary: #7A4630;
+      --bg-card: rgba(0, 0, 0, 0);
+      --border-color: rgba(168, 113, 88);
+      --text-primary: #ffffff;
+      --text-secondary: #ffffff;
+      --text-muted: #ffffff;
+      --accent-blue: #7A4630;
+      --accent-blue-hover: #7A4630;
+      --success: #10b981;
+      --invalid: #ef4444;
+      --radius: clamp(6px, 0.8vw, 8px);
+      --shadow: 0 6px 24px rgba(0, 0, 0, 0);
+      --glass-bg: rgba(0, 0, 0, 0);
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: auto;
+    }
+    body {
+      background: linear-gradient(145deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      line-height: 1.5;
+      font-size: clamp(12px, 1.8vw, 14px);
+      display: flex;
+      flex-direction: column;
+    }
+    .navbar {
+      background: var(--bg-card);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-color);
+      padding: clamp(0.4rem, 1vw, 0.6rem) clamp(0.6rem, 1.5vw, 0.8rem);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      flex-shrink: 0;
+    }
+    .navbar-brand {
+      font-weight: 600;
+      font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: color 0.2s ease;
+    }
+    .navbar-brand:hover {
+      color: var(--accent-blue);
+    }
+    .main-container {
+      padding: clamp(0.6rem, 1.5vw, 0.8rem);
+      width: 100%;
+      max-width: 100vw;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      margin-bottom: clamp(0.6rem, 1.5vw, 0.8rem);
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+    .card-header {
+      background: transparent;
+      border-bottom: 1px solid var(--border-color);
+      padding: clamp(0.4rem, 1vw, 0.6rem) clamp(0.6rem, 1.5vw, 0.8rem);
+      font-weight: 600;
+      font-size: clamp(0.8rem, 2vw, 0.9rem);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .card-body {
+      padding: clamp(0.6rem, 1.5vw, 0.8rem);
+      display: flex;
+      flex-direction: column;
+    }
+    .script-editor {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      color: var(--WHİTE);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(0.7rem, 1.5vw, 0.8rem);
+      line-height: 1.6;
+      padding: clamp(0.6rem, 1.5vw, 0.8rem);
+      resize: none;
+      height: clamp(200px, 40vh, 250px);
+      width: 100%;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .script-editor:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    }
+    .script-editor::placeholder {
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+    .btn {
+      font-weight: 500;
+      padding: clamp(0.3rem, 1vw, 0.5rem) clamp(0.6rem, 1.5vw, 0.8rem);
+      border-radius: var(--radius);
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+      min-width: clamp(60px, 15vw, 80px);
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.4s ease, height 0.4s ease;
+    }
+    .btn:hover::after {
+      width: 200%;
+      height: 200%;
+    }
+    .btn-primary {
+      background: var(--accent-blue);
+      border: none;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--accent-blue-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    .btn-secondary {
+      background: var(--glass-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+    }
+    .btn-secondary:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      transform: translateY(-2px);
+    }
+    .game-list {
+      max-height: clamp(200px, 40vh, 250px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent-blue) transparent;
+    }
+    .game-list::-webkit-scrollbar {
+      width: 5px;
+    }
+    .game-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .game-list::-webkit-scrollbar-thumb {
+      background: var(--accent-blue);
+      border-radius: var(--radius);
+    }
+    .game-item {
+      padding: clamp(0.4rem, 1vw, 0.6rem) clamp(0.6rem, 1.5vw, 0.8rem);
+      margin-bottom: 0.4rem;
+      background: var(--glass-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: var(--text-secondary);
+      touch-action: manipulation;
+    }
+    .game-item:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--accent-blue);
+      color: var(--text-primary);
+      transform: translateY(-2px);
+    }
+    .game-item.active {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+    .game-item::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      transition: all 0.3s ease;
+    }
+    .game-item.status-success::before {
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .game-item.status-invalid::before {
+      background: var(--invalid);
+      box-shadow: 0 0 6px var(--invalid);
+    }
+    .notification {
+      position: fixed;
+      top: clamp(0.6rem, 1.5vw, 0.8rem);
+      right: clamp(0.6rem, 1.5vw, 0.8rem);
+      z-index: 1050;
+      min-width: clamp(200px, 75vw, 250px);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      transform: translateX(120%);
+      transition: transform 0.4s ease, opacity 0.4s ease;
+      opacity: 0;
+    }
+    .notification.show {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .notification.success {
+      border-left: 3px solid var(--success);
+    }
+    .notification.error {
+      border-left: 3px solid var(--invalid);
+    }
+    .notification.info {
+      border-left: 3px solid var(--accent-blue);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(clamp(120px, 22vw, 150px), 1fr));
+      gap: clamp(0.6rem, 1.5vw, 0.8rem);
+      margin-bottom: clamp(0.8rem, 2vw, 1rem);
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: clamp(0.6rem, 1.5vw, 0.8rem);
+      text-align: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+    .stat-card:hover {
+      border-color: var(--accent-blue);
+      transform: translateY(-2px);
+    }
+    .stat-value {
+      font-size: clamp(1.2rem, 3vw, 1.4rem);
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 0.4rem;
+    }
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: clamp(0.6rem, 1.2vw, 0.7rem);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.85;
+    }
+    @media (max-width: 992px) {
+      .main-container {
+        padding: clamp(0.4rem, 1.2vw, 0.6rem);
+      }
+      .script-editor {
+        height: clamp(160px, 35vh, 200px);
+        font-size: clamp(0.65rem, 1.4vw, 0.75rem);
+      }
+      .game-list {
+        max-height: clamp(160px, 35vh, 200px);
+      }
+      .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 20vw, 130px), 1fr));
+      }
+    }
+    @media (max-width: 768px) {
+      .main-container {
+        padding: clamp(0.3rem, 1vw, 0.5rem);
+      }
+      .card-body {
+        padding: clamp(0.4rem, 1.2vw, 0.6rem);
+      }
+      .script-editor {
+        height: clamp(140px, 30vh, 180px);
+      }
+      .game-list {
+        max-height: clamp(140px, 30vh, 180px);
+      }
+      .btn {
+        padding: clamp(0.3rem, 1vw, 0.4rem) clamp(0.5rem, 1.5vw, 0.7rem);
+        font-size: clamp(0.7rem, 1.6vw, 0.8rem);
+        min-width: clamp(50px, 12vw, 70px);
+      }
+      .notification {
+        right: clamp(0.4rem, 1.2vw, 0.5rem);
+        left: clamp(0.4rem, 1.2vw, 0.5rem);
+        min-width: auto;
+      }
+      .game-item {
+        padding: clamp(0.3rem, 0.8vw, 0.5rem) clamp(0.5rem, 1.2vw, 0.7rem);
+      }
+    }
+    @media (max-width: 576px) {
+      .navbar {
+        padding: clamp(0.3rem, 1vw, 0.4rem) clamp(0.4rem, 1.2vw, 0.6rem);
+      }
+      .navbar-brand {
+        font-size: clamp(0.8rem, 2vw, 1rem);
+      }
+      .main-container {
+        padding: clamp(0.3rem, 0.8vw, 0.4rem);
+      }
+      .script-editor {
+        height: clamp(120px, 25vh, 150px);
+        font-size: clamp(0.6rem, 1.2vw, 0.7rem);
+      }
+      .game-list {
+        max-height: clamp(120px, 25vh, 150px);
+      }
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-in {
+      animation: slideIn 0.4s ease-out forwards;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">
+        <i class="bi bi-code-slash" style="color: var(--accent-blue);"></i>
+        Bublik ServerSide
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge px-2 py-1" style="background: var(--success); font-size: clamp(0.6rem, 1.2vw, 0.7rem);">Online rn</span>
+        <i class="bi bi-gear text-muted" style="cursor: pointer; font-size: clamp(0.8rem, 1.8vw, 1rem);"></i>
+      </div>
+    </div>
+  </nav>
+  <div class="container-fluid main-container">
+    <div class="stats-grid animate-in">
+      <div class="stat-card">
+        <div class="stat-value" id="executionCount">0</div>
+        <div class="stat-label">Executions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="successRate">100%</div>
+        <div class="stat-label">Success Rate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="activeGames">0</div>
+        <div class="stat-label">Active Games</div>
+      </div>
+    </div>
+    <div class="row g-2">
+      <div class="col-lg-8 col-md-12">
+        <div class="card animate-in">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-code-square" style="color: var(--accent-blue);"></i>
+              Script Editor
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge px-2 py-1" style="background: var(--bg-secondary); font-size: clamp(0.6rem, 1.2vw, 0.7rem);">Lua</span>
+              <span class="badge px-2 py-1" style="background: var(--accent-blue); font-size: clamp(0.6rem, 1.2vw, 0.7rem);" id="lineCount">0 lines</span>
+            </div>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <textarea 
+              id="scriptBox" 
+              class="script-editor flex-grow-1" 
+              placeholder="Enter your Lua script here
+Example:
+game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 50
+print('Script executed successfully!')"
+              oninput="updateLineCount()"
+            ></textarea>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <button class="btn btn-primary" onclick="executeOnce()">
+                <i class="bi bi-play-fill"></i>
+                Execute
+              </button>
+              <button class="btn btn-secondary" onclick="clearScript()">
+                <i class="bi bi-trash"></i>
+                Clear
+              </button>
+              <input type="file" id="loadFile" accept=".txt,.lua" style="display: none;" onchange="loadFile(event)">
+              <button class="btn btn-secondary" onclick="document.getElementById('loadFile').click()">
+                <i class="bi bi-folder-open"></i>
+                Load File
+              </button>
+              <button class="btn btn-secondary" onclick="saveFile()">
+                <i class="bi bi-download"></i>
+                Save File
+              </button>
+              <button class="btn btn-secondary" onclick="openScriptHub()">
+                <i class="bi bi-collection"></i>
+                Script Hub
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-md-12">
+        <div class="card animate-in">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-controller" style="color: var(--accent-blue);"></i>
+              Game Selection
+            </div>
+            <span class="badge px-2 py-1" style="background: var(--accent-blue); font-size: clamp(0.6rem, 1.2vw, 0.7rem);" id="gameCount">0 games</span>
+          </div>
+          <div class="card-body d-flex flex-column">
+            <div class="game-list flex-grow-1" id="gameList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="notification" class="notification">
+    <div class="d-flex align-items-center p-2">
+      <i id="notificationIcon" class="bi bi-info-circle me-2"></i>
+      <span id="notificationText"></span>
+      <button type="button" class="btn-close btn-close-white ms-auto" onclick="hideNotification()"></button>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          return csv;
+        } catch (e) {
+          console.error(e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+    const RTDB_URL = "https://bublik-ss2-default-rtdb.asia-southeast1.firebaseio.com/commands";
+    const games = [
+      {
+        name: "Discord",
+        url: "https://discord.gg/JPt95Qrsmb",
+        status: "success"
+      }
+    ];
+    let executionCount = 0;
+    let successCount = 0;
+    document.addEventListener('DOMContentLoaded', function() {
+      updateLineCount();
+      loadStats();
+      renderGames(games);
+    });
+    function renderGames(gameList) {
+      const gameListElement = document.getElementById('gameList');
+      gameListElement.innerHTML = '';
+      if (gameList.length === 0) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'text-muted text-center';
+        emptyMessage.style.width = '100%';
+        emptyMessage.textContent = 'No games available';
+        gameListElement.appendChild(emptyMessage);
+      } else {
+        gameList.forEach(game => {
+          const gameItem = document.createElement('div');
+          gameItem.className = `game-item status-${game.status}`;
+          gameItem.innerHTML = `<span>${game.name}</span>`;
+          gameItem.onclick = () => selectGame(game.name, game.url, gameItem);
+          gameListElement.appendChild(gameItem);
+        });
+      }
+      document.getElementById('gameCount').textContent = `${gameList.length} games`;
+      document.getElementById('activeGames').textContent = gameList.length;
+    }
+    async function executeOnce() {
+      const code = document.getElementById('scriptBox').value.trim();
+      if (!code) {
+        showNotification("Script is empty", "error");
+        return;
+      }
+      const key = Date.now().toString() + Math.floor(Math.random() * 1000);
+      const data = {
+        type: "execute",
+        target: "All",
+        script: code,
+        time: Date.now(),
+        used: false,
+        processing: false,
+        failed: false
+      };
+      const executeBtn = document.querySelector('button[onclick="executeOnce()"]');
+      const originalText = executeBtn.innerHTML;
+      executeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Executing...';
+      executeBtn.disabled = true;
+      try {
+        const response = await fetch(`${RTDB_URL}/${key}.json`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        // Simulate server-side processing delay
+        setTimeout(async () => {
+          try {
+            await fetch(`${RTDB_URL}/${key}.json`, { method: "DELETE" });
+            executionCount++;
+            successCount++;
+            updateStats();
+            showNotification("Command executed successfully", "success");
+          } catch (deleteError) {
+            showNotification("Error deleting command: " + deleteError.message, "error");
+          } finally {
+            executeBtn.innerHTML = originalText;
+            executeBtn.disabled = false;
+          }
+        }, 2); // Increased delay to ensure server processes command
+      } catch (e) {
+        executionCount++;
+        updateStats();
+        showNotification("Error sending command: " + e.message, "error");
+        executeBtn.innerHTML = originalText;
+        executeBtn.disabled = false;
+      }
+    }
+    function showNotification(message, type = "info") {
+      const notification = document.getElementById('notification');
+      const icon = document.getElementById('notificationIcon');
+      const text = document.getElementById('notificationText');
+      const icons = {
+        success: 'bi-check-circle-fill',
+        error: 'bi-exclamation-triangle-fill',
+        info: 'bi-info-circle-fill'
+      };
+      icon.className = `bi ${icons[type]} me-2`;
+      text.textContent = message;
+      notification.className = `notification ${type}`;
+      setTimeout(() => notification.classList.add('show'), 100);
+      setTimeout(() => hideNotification(), 3000);
+    }
+    function hideNotification() {
+      const notification = document.getElementById('notification');
+      notification.classList.remove('show');
+    }
+    function clearScript() {
+      document.getElementById('scriptBox').value = '';
+      updateLineCount();
+      showNotification('Script cleared', 'info');
+    }
+    function loadFile(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('scriptBox').value = e.target.result;
+          updateLineCount();
+          showNotification(`File "${file.name}" loaded successfully`, 'success');
+        };
+        reader.readAsText(file);
+      }
+    }
+    function saveFile() {
+      const code = document.getElementById('scriptBox').value;
+      if (!code) {
+        showNotification('No script to save', 'error');
+        return;
+      }
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `script_${new Date().toISOString().slice(0,10)}.lua`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showNotification('Script saved successfully', 'success');
+    }
+    function openScriptHub() {
+      window.open('https://requirehubv2.pythonanywhere.com/', '_blank');
+      showNotification('Opening Script Hub', 'info');
+    }
+    function selectGame(gameName, gameUrl, element) {
+      window.open(gameUrl, '_blank');
+      document.querySelectorAll('.game-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      element.classList.add('active');
+      showNotification(`Opened game: ${gameName}`, 'info');
+    }
+    function updateLineCount() {
+      const code = document.getElementById('scriptBox').value;
+      const lines = code.split('\n').length;
+      document.getElementById('lineCount').textContent = `${lines} lines`;
+    }
+    function updateStats() {
+      document.getElementById('executionCount').textContent = executionCount;
+      const rate = executionCount > 0 ? Math.round((successCount / executionCount) * 100) : 100;
+      document.getElementById('successRate').textContent = `${rate}%`;
+      saveStats();
+    }
+    function saveStats() {
+      localStorage.setItem('executorStats', JSON.stringify({
+        executionCount,
+        successCount
+      }));
+    }
+    function loadStats() {
+      const stats = localStorage.getItem('executorStats');
+      if (stats) {
+        const parsed = JSON.parse(stats);
+        executionCount = parsed.executionCount || 0;
+        successCount = parsed.successCount || 0;
+        updateStats();
+      }
+    }
+    document.getElementById('scriptBox').addEventListener('input', function() {
+      localStorage.setItem('savedScript', this.value);
+    });
+    window.addEventListener('load', function() {
+      const savedScript = localStorage.getItem('savedScript');
+      if (savedScript) {
+        document.getElementById('scriptBox').value = savedScript;
+        updateLineCount();
+      }
+    });
+  </script>
+</body>
+</html>
